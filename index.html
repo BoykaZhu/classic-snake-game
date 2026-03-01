@@ -47,7 +47,11 @@
     button {
       border:0; border-radius:10px; padding:10px; font-weight:700; color:white;
       background:#334155; cursor:pointer;
+      transition: transform .08s ease, filter .12s ease;
+      -webkit-tap-highlight-color: transparent;
     }
+    button:active { transform: scale(0.95); filter: brightness(1.15); }
+    button.press { transform: scale(0.95); filter: brightness(1.15); }
     .primary { background:#4f46e5; }
     .small-note { margin-top:8px; font-size:12px; color:var(--muted); }
   </style>
@@ -85,7 +89,7 @@
     const N = 20; // 20x20
     const cell = canvas.width / N;
 
-    let snake, dir, nextDir, food, timer, speed, score, over;
+    let snake, dir, nextDir, food, timer, speed, score, over, level;
     const BEST_KEY = 'snake_best_score_v1';
     let best = Number(localStorage.getItem(BEST_KEY) || 0);
     bestEl.textContent = best;
@@ -106,10 +110,11 @@
       nextDir = {x:1,y:0};
       food = spawnFood();
       score = 0;
-      speed = 140;
+      speed = 220; // 初始更慢
+      level = 1;
       over = false;
       scoreEl.textContent = '0';
-      statusEl.textContent = '进行中';
+      statusEl.textContent = `进行中（Lv.${level}）`;
       if (timer) clearInterval(timer);
       timer = setInterval(tick, speed);
       draw();
@@ -139,13 +144,18 @@
         score++;
         scoreEl.textContent = score;
         food = spawnFood();
-        // 逐步提速，最低60ms
-        const ns = Math.max(60, speed - 2);
-        if (ns !== speed) {
-          speed = ns;
-          clearInterval(timer);
-          timer = setInterval(tick, speed);
+        // 分级提速：每3分升1级，速度更自然
+        const newLevel = Math.floor(score / 3) + 1;
+        if (newLevel !== level) {
+          level = newLevel;
+          const ns = Math.max(90, 220 - (level - 1) * 15);
+          if (ns !== speed) {
+            speed = ns;
+            clearInterval(timer);
+            timer = setInterval(tick, speed);
+          }
         }
+        statusEl.textContent = `进行中（Lv.${level}）`;
       } else {
         snake.pop();
       }
@@ -211,6 +221,16 @@
       if (fill) ctx.fill(); else ctx.stroke();
     }
 
+
+    function feedback(btn) {
+      if (btn) {
+        btn.classList.add('press');
+        setTimeout(() => btn.classList.remove('press'), 80);
+      }
+      // 静默优先：用震动代替声音（支持设备上生效）
+      if (navigator.vibrate) navigator.vibrate(20);
+    }
+
     document.addEventListener('keydown', (e) => {
       const k = e.key.toLowerCase();
       if (k === 'arrowup' || k === 'w') setDirection('up');
@@ -220,10 +240,10 @@
     });
 
     document.querySelectorAll('[data-dir]').forEach(btn => {
-      btn.addEventListener('click', () => setDirection(btn.dataset.dir));
+      btn.addEventListener('click', () => { feedback(btn); setDirection(btn.dataset.dir); });
     });
 
-    restartBtn.addEventListener('click', reset);
+    restartBtn.addEventListener('click', () => { feedback(restartBtn); reset(); });
 
     reset();
   </script>
