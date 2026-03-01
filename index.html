@@ -81,7 +81,7 @@
       </div>
       <button class="primary" id="restart">重新开始</button>
     </div>
-    <div class="small-note">键盘：↑↓←→ / WASD。手机可点方向按钮。</div>
+    <div class="small-note">键盘：↑↓←→ / WASD。手机可点方向按钮。 版本: v4-audiofix</div>
   </div>
 
   <script>
@@ -107,37 +107,46 @@
     let audioCtx = null;
 
     function ensureAudio() {
-      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      if (!audioCtx) audioCtx = new AC();
+      return audioCtx;
     }
 
-    function unlockAudio() {
-      try {
-        ensureAudio();
-        const o = audioCtx.createOscillator();
-        const g = audioCtx.createGain();
-        g.gain.value = 0.00001;
-        o.connect(g); g.connect(audioCtx.destination);
-        o.start();
-        o.stop(audioCtx.currentTime + 0.01);
-      } catch (_) {}
+    async function unlockAudio() {
+      const ctx = ensureAudio();
+      if (!ctx) return false;
+      if (ctx.state === 'suspended') {
+        try { await ctx.resume(); } catch (_) {}
+      }
+      return ctx.state === 'running';
     }
 
     function beep(type='tap') {
       if (!soundEnabled) return;
-      try {
-        ensureAudio();
-        const now = audioCtx.currentTime;
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.connect(gain); gain.connect(audioCtx.destination);
+      const ctx = ensureAudio();
+      if (!ctx || ctx.state !== 'running') return;
 
-        if (type === 'tap') { osc.frequency.setValueAtTime(520, now); gain.gain.setValueAtTime(0.0001, now); gain.gain.exponentialRampToValueAtTime(0.09, now+0.01); gain.gain.exponentialRampToValueAtTime(0.0001, now+0.06); osc.stop(now+0.07); }
-        else if (type === 'eat') { osc.frequency.setValueAtTime(660, now); osc.frequency.exponentialRampToValueAtTime(980, now+0.08); gain.gain.setValueAtTime(0.0001, now); gain.gain.exponentialRampToValueAtTime(0.13, now+0.01); gain.gain.exponentialRampToValueAtTime(0.0001, now+0.11); osc.stop(now+0.12); }
-        else if (type === 'fail') { osc.frequency.setValueAtTime(260, now); osc.frequency.exponentialRampToValueAtTime(120, now+0.22); gain.gain.setValueAtTime(0.0001, now); gain.gain.exponentialRampToValueAtTime(0.16, now+0.02); gain.gain.exponentialRampToValueAtTime(0.0001, now+0.24); osc.stop(now+0.25); }
-        else { osc.frequency.setValueAtTime(500, now); gain.gain.setValueAtTime(0.0001, now); gain.gain.exponentialRampToValueAtTime(0.06, now+0.01); gain.gain.exponentialRampToValueAtTime(0.0001, now+0.09); osc.stop(now+0.1); }
-        osc.start(now);
-      } catch (_) {}
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      let f1 = 520, f2 = 520, t = 0.09, v = 0.08;
+      if (type === 'eat') { f1 = 680; f2 = 980; t = 0.14; v = 0.12; }
+      if (type === 'fail') { f1 = 260; f2 = 140; t = 0.28; v = 0.16; }
+
+      osc.frequency.setValueAtTime(f1, now);
+      osc.frequency.exponentialRampToValueAtTime(Math.max(80, f2), now + t * 0.8);
+
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(v, now + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + t);
+
+      osc.start(now);
+      osc.stop(now + t + 0.01);
     }
 
     function randCell() { return { x: Math.floor(Math.random()*N), y: Math.floor(Math.random()*N) }; }
@@ -289,13 +298,13 @@
     });
 
     document.querySelectorAll('[data-dir]').forEach(btn => {
-      btn.addEventListener('click', () => { feedback(btn); setDirection(btn.dataset.dir); });
+      btn.addEventListener('click', async () => { await unlockAudio(); feedback(btn); setDirection(btn.dataset.dir); });
     });
 
-    restartBtn.addEventListener('click', () => { feedback(restartBtn); reset(); });
+    restartBtn.addEventListener('click', async () => { await unlockAudio(); feedback(restartBtn); reset(); });
 
-    testSoundBtn.addEventListener('click', () => {
-      unlockAudio();
+    testSoundBtn.addEventListener('click', async () => {
+      await unlockAudio();
       soundEnabled = true;
       soundToggle.checked = true;
       localStorage.setItem(SOUND_KEY, '1');
@@ -303,8 +312,8 @@
       setTimeout(() => beep('eat'), 120);
     });
 
-    window.addEventListener('pointerdown', unlockAudio, { once:true });
-    window.addEventListener('touchstart', unlockAudio, { once:true, passive:true });
+    window.addEventListener('pointerdown', () => { unlockAudio(); }, { once:true });
+    window.addEventListener('touchstart', () => { unlockAudio(); }, { once:true, passive:true });
 
     soundToggle.checked = soundEnabled;
     soundToggle.addEventListener('change', () => {
