@@ -63,6 +63,12 @@
       <div id="status">按方向键开始</div>
       <div>分数: <strong id="score">0</strong> ｜ 最高: <strong id="best">0</strong></div>
     </div>
+    <div class="row" style="margin-top:-4px;">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);">
+        <input id="soundToggle" type="checkbox" /> 声音反馈
+      </label>
+      <span class="muted">按钮/吃到食物/失败</span>
+    </div>
     <canvas id="game" width="480" height="480"></canvas>
 
     <div class="controls-wrap">
@@ -85,6 +91,7 @@
     const scoreEl = document.getElementById('score');
     const bestEl = document.getElementById('best');
     const restartBtn = document.getElementById('restart');
+    const soundToggle = document.getElementById('soundToggle');
 
     const N = 20; // 20x20
     const cell = canvas.width / N;
@@ -93,6 +100,32 @@
     const BEST_KEY = 'snake_best_score_v1';
     let best = Number(localStorage.getItem(BEST_KEY) || 0);
     bestEl.textContent = best;
+
+    const SOUND_KEY = 'snake_sound_enabled_v1';
+    let soundEnabled = localStorage.getItem(SOUND_KEY) === '1';
+    let audioCtx = null;
+
+    function ensureAudio() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    function beep(type='tap') {
+      if (!soundEnabled) return;
+      try {
+        ensureAudio();
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain); gain.connect(audioCtx.destination);
+
+        if (type === 'tap') { osc.frequency.setValueAtTime(520, now); gain.gain.setValueAtTime(0.0001, now); gain.gain.exponentialRampToValueAtTime(0.05, now+0.01); gain.gain.exponentialRampToValueAtTime(0.0001, now+0.06); osc.stop(now+0.07); }
+        else if (type === 'eat') { osc.frequency.setValueAtTime(660, now); osc.frequency.exponentialRampToValueAtTime(980, now+0.08); gain.gain.setValueAtTime(0.0001, now); gain.gain.exponentialRampToValueAtTime(0.08, now+0.01); gain.gain.exponentialRampToValueAtTime(0.0001, now+0.11); osc.stop(now+0.12); }
+        else if (type === 'fail') { osc.frequency.setValueAtTime(260, now); osc.frequency.exponentialRampToValueAtTime(120, now+0.22); gain.gain.setValueAtTime(0.0001, now); gain.gain.exponentialRampToValueAtTime(0.1, now+0.02); gain.gain.exponentialRampToValueAtTime(0.0001, now+0.24); osc.stop(now+0.25); }
+        else { osc.frequency.setValueAtTime(500, now); gain.gain.setValueAtTime(0.0001, now); gain.gain.exponentialRampToValueAtTime(0.06, now+0.01); gain.gain.exponentialRampToValueAtTime(0.0001, now+0.09); osc.stop(now+0.1); }
+        osc.start(now);
+      } catch (_) {}
+    }
 
     function randCell() { return { x: Math.floor(Math.random()*N), y: Math.floor(Math.random()*N) }; }
 
@@ -143,6 +176,7 @@
       if (head.x === food.x && head.y === food.y) {
         score++;
         scoreEl.textContent = score;
+        beep('eat');
         food = spawnFood();
         // 分级提速：每3分升1级，速度更自然
         const newLevel = Math.floor(score / 3) + 1;
@@ -167,6 +201,7 @@
       over = true;
       clearInterval(timer);
       statusEl.textContent = '游戏结束';
+      beep('fail');
       if (score > best) {
         best = score;
         localStorage.setItem(BEST_KEY, String(best));
@@ -229,6 +264,7 @@
       }
       // 静默优先：用震动代替声音（支持设备上生效）
       if (navigator.vibrate) navigator.vibrate(20);
+      beep('tap');
     }
 
     document.addEventListener('keydown', (e) => {
@@ -244,6 +280,13 @@
     });
 
     restartBtn.addEventListener('click', () => { feedback(restartBtn); reset(); });
+
+    soundToggle.checked = soundEnabled;
+    soundToggle.addEventListener('change', () => {
+      soundEnabled = soundToggle.checked;
+      localStorage.setItem(SOUND_KEY, soundEnabled ? '1' : '0');
+      if (soundEnabled) { beep('tap'); }
+    });
 
     reset();
   </script>
