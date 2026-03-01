@@ -102,12 +102,25 @@
     bestEl.textContent = best;
 
     const SOUND_KEY = 'snake_sound_enabled_v1';
-    let soundEnabled = localStorage.getItem(SOUND_KEY) === '1';
+    const savedSound = localStorage.getItem(SOUND_KEY);
+    let soundEnabled = savedSound === null ? true : savedSound === '1';
     let audioCtx = null;
 
     function ensureAudio() {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    function unlockAudio() {
+      try {
+        ensureAudio();
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        g.gain.value = 0.00001;
+        o.connect(g); g.connect(audioCtx.destination);
+        o.start();
+        o.stop(audioCtx.currentTime + 0.01);
+      } catch (_) {}
     }
 
     function beep(type='tap') {
@@ -281,11 +294,14 @@
 
     restartBtn.addEventListener('click', () => { feedback(restartBtn); reset(); });
 
+    window.addEventListener('pointerdown', unlockAudio, { once:true });
+    window.addEventListener('touchstart', unlockAudio, { once:true, passive:true });
+
     soundToggle.checked = soundEnabled;
     soundToggle.addEventListener('change', () => {
       soundEnabled = soundToggle.checked;
       localStorage.setItem(SOUND_KEY, soundEnabled ? '1' : '0');
-      if (soundEnabled) { beep('tap'); }
+      if (soundEnabled) { unlockAudio(); beep('tap'); }
     });
 
     reset();
